@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShieldCheck, 
@@ -16,6 +16,9 @@ import {
   Moon,
   Sun
 } from 'lucide-react';
+import axiosInstance from './api/axiosInstance';
+
+const getApiError = (error, fallback) => error.response?.data?.error || fallback;
 
 const EXISTING_COMMITTEES = [
   { id: 'cs', name: 'Circuit Society', faculty: 'Dr. A. K. Sharma' },
@@ -73,34 +76,25 @@ export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostT
     setAuthMode('logged_in');
   };
 
-  const handlePublish = (e) => {
+  const handlePublish = async (e) => {
     e.preventDefault();
     if (!postForm.caption || !postForm.mediaUrl) return;
-
-    const newPost = {
-      id: Date.now(),
-      committee: selectedCommittee,
-      tagline: 'Official Post',
-      avatar: selectedCommittee.substring(0, 2).toUpperCase(),
-      time: 'Just now',
-      badge: postForm.badge || 'Announcement',
-      badgeColor: postForm.mediaType === 'video' ? 'bg-[#E1F3E6] text-[#2D6A4F] dark:bg-[#1C3A27] dark:text-[#81C784]' : 'bg-[#FDE8E1] text-[#C87D55] dark:bg-[#3D251E] dark:text-[#FFB74D]',
-      caption: postForm.caption,
-      mediaType: postForm.mediaType,
-      mediaUrl: postForm.mediaUrl,
-      posterUrl: postForm.mediaType === 'video' ? postForm.mediaUrl : undefined,
-      likes: 0,
-      isLiked: false,
-      comments: []
-    };
-
-    if (onAddPostToFeed) {
-      onAddPostToFeed(newPost);
+    try {
+      const response = await axiosInstance.post('/feed', {
+        committee_name: selectedCommittee,
+        media_type: postForm.mediaType,
+        media_url: postForm.mediaUrl,
+        poster_url: postForm.mediaType === 'video' ? postForm.mediaUrl : null,
+        caption: postForm.caption,
+        badge: postForm.badge || 'Announcement'
+      });
+      if (onAddPostToFeed) onAddPostToFeed(response.data.data);
+      setPublishSuccess(true);
+      setTimeout(() => setPublishSuccess(false), 3000);
+      setPostForm({ mediaType: 'image', caption: '', mediaUrl: '', badge: 'Announcement' });
+    } catch (error) {
+      window.alert(getApiError(error, 'Unable to publish this post. Please try again.'));
     }
-
-    setPublishSuccess(true);
-    setTimeout(() => setPublishSuccess(false), 3000);
-    setPostForm({ mediaType: 'image', caption: '', mediaUrl: '', badge: 'Announcement' });
   };
 
   return (

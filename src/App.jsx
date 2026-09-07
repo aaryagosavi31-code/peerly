@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Heart, 
@@ -15,7 +15,6 @@ import {
   UserCheck,
   Globe,
   Info,
-  ShieldAlert,
   Moon,
   Sun,
   Bookmark,
@@ -31,6 +30,9 @@ import {
   Shield
 } from 'lucide-react';
 import AdminPortal from './Admin';
+import axiosInstance from './api/axiosInstance';
+
+const getApiError = (error, fallback) => error.response?.data?.error || fallback;
 
 const INITIAL_POSTS = [
   {
@@ -172,7 +174,40 @@ export default function App() {
   const [anonymousReviews, setAnonymousReviews] = useState([
     { id: 1, committee: 'Circuit Society', comment: 'Great hands-on projects, heavy workload during intake.', score: 4.5, time: '2 days ago' }
   ]);
-  const [reviewInput, setReviewInput] = useState({ committee: 'Circuit Society', score: '5', comment: '' });
+  const [reviewInput, setReviewInput] = useState({ committee: 'cs', score: '5', comment: '' });
+
+  useEffect(() => {
+    const loadLostFound = async () => {
+      try {
+        const response = await axiosInstance.get('/lost-found?type=LOST&page=1&limit=10');
+        const items = response.data.data || [];
+        setLostFoundList(items.map((item) => ({
+          id: item.id,
+          type: 'Lost',
+          title: item.title,
+          desc: item.description || 'No description provided.',
+          location: item.location_lost || 'Location unavailable',
+          time: item.date_lost || item.created_at,
+          event: 'General Campus',
+          contact: item.reporter_id || 'Campus user'
+        })));
+      } catch (error) {
+        window.alert(getApiError(error, 'Unable to load lost and found notices.'));
+      }
+    };
+
+    const loadFeed = async () => {
+      try {
+        const response = await axiosInstance.get('/feed/posts?page=1&limit=6');
+        if (Array.isArray(response.data.data)) setPosts(response.data.data);
+      } catch (error) {
+        window.alert(getApiError(error, 'Unable to load the campus feed.'));
+      }
+    };
+
+    loadLostFound();
+    loadFeed();
+  }, []);
 
   // Post Actions
   const toggleLike = (postId) => {
@@ -186,56 +221,83 @@ export default function App() {
     setCommentInputs(prev => ({ ...prev, [postId]: '' }));
   };
 
-  const handleAddLostFound = (e) => {
+  const handleAddLostFound = async (e) => {
     e.preventDefault();
     if (!lostForm.title || !lostForm.location) return;
-    const newItem = {
-      id: Date.now(),
-      type: lostForm.type,
-      title: lostForm.title,
-      desc: lostForm.desc || 'No description provided.',
-      location: lostForm.location,
-      time: 'Just now',
-      event: 'General Campus',
-      contact: lostForm.contact || user.name
-    };
-    setLostFoundList([newItem, ...lostFoundList]);
-    setLostForm({ type: 'Lost', title: '', desc: '', location: '', contact: '' });
+    try {
+      const response = await axiosInstance.post('/lost-found', {
+        title: lostForm.title,
+        description: lostForm.desc,
+        category: 'General',
+        location: lostForm.location,
+        type: lostForm.type.toUpperCase(),
+        date_lost: new Date().toISOString(),
+        image_url: null
+      });
+      const item = response.data.data;
+      setLostFoundList((current) => [{
+        id: item.id,
+        type: lostForm.type,
+        title: item.title,
+        desc: item.description || 'No description provided.',
+        location: item.location_lost || item.location_found || lostForm.location,
+        time: 'Just now',
+        event: 'General Campus',
+        contact: lostForm.contact || user.name
+      }, ...current]);
+      setLostForm({ type: 'Lost', title: '', desc: '', location: '', contact: '' });
+    } catch (error) {
+      window.alert(getApiError(error, 'Unable to submit this notice. Please sign in and try again.'));
+    }
   };
 
-  const handleAddReview = (e) => {
+  const handleAddReview = async (e) => {
     e.preventDefault();
     if (!reviewInput.comment) return;
-    const review = {
-      id: Date.now(),
-      committee: reviewInput.committee,
-      comment: reviewInput.comment,
-      score: parseFloat(reviewInput.score),
-      time: 'Just now'
-    };
-    setAnonymousReviews([review, ...anonymousReviews]);
-    setReviewInput({ committee: 'Circuit Society', score: '5', comment: '' });
+    try {
+      const selectedCommittee = committees.find((committee) => committee.id === reviewInput.committee);
+      const response = await axiosInstance.post('/reviews', {
+        committee_id: reviewInput.committee,
+        ratings: { score: Number(reviewInput.score) },
+        review_text: reviewInput.comment
+      });
+      setAnonymousReviews((current) => [{
+        id: response.data.data?.id || Date.now(),
+        committee: selectedCommittee?.name || reviewInput.committee,
+        comment: reviewInput.comment,
+        score: Number(reviewInput.score),
+        time: 'Just now'
+      }, ...current]);
+      setReviewInput({ committee: committees[0]?.id || 'cs', score: '5', comment: '' });
+    } catch (error) {
+      window.alert(getApiError(error, 'Unable to submit your review. Please try again.'));
+    }
   };
 
-  const handleAuthSubmit = (e) => {
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
-    setUser({
-      name: authRole === 'admin' 
-        ? 'Admin User' 
-        : (authMode === 'login' ? (authForm.email.split('@')[0] || 'Aaditya J.') : (authForm.name || 'New Student')),
-      email: authForm.email || (authRole === 'admin' ? 'admin@peerly.edu' : 'student@peerly.edu'),
-      loggedIn: true,
-      role: authRole
-    });
-
-    if (authRole === 'admin') {
-      setViewMode('admin');
-    } else {
-      setViewMode('user');
+    try {
+      const endpoint = authMode === 'register' ? '/auth/register' : '/auth/login';
+      const response = await axiosInstance.post(endpoint, {
+        ...authForm,
+        role: authRole === 'admin' ? 'ADMIN' : 'STUDENT'
+      });
+      const account = response.data.user;
+      localStorage.setItem('token', response.data.token);
+      setUser({
+        name: account.name || authForm.email.split('@')[0],
+        email: account.email || authForm.email,
+        loggedIn: true,
+        role: account.role || authRole
+      });
+      setViewMode(authRole === 'admin' ? 'admin' : 'user');
+    } catch (error) {
+      window.alert(getApiError(error, 'Authentication failed. Check your details and try again.'));
     }
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('token');
     setUser({ name: '', email: '', loggedIn: false, role: 'student' });
     setViewMode('auth');
   };
@@ -831,7 +893,7 @@ export default function App() {
                 <h3 className={`font-bold text-sm mb-4 ${isDarkMode ? 'text-white' : 'text-[#1A1615]'}`}>Post Anonymous Review</h3>
                 <form onSubmit={handleAddReview} className="space-y-3 text-xs">
                   <select value={reviewInput.committee} onChange={e => setReviewInput({ ...reviewInput, committee: e.target.value })} className={`w-full p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`}>
-                    {committees.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    {committees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <select value={reviewInput.score} onChange={e => setReviewInput({ ...reviewInput, score: e.target.value })} className={`w-full p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`}>
                     <option value="5">5 - Excellent</option>

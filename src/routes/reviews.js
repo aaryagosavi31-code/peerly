@@ -13,7 +13,7 @@ const hashUserId = (userId) => {
 // POST /api/reviews
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { committee_id, cycle_id, rating, comment } = req.body;
+    const { committee_id, cycle_id, rating, ratings, comment, review_text } = req.body;
     const userId = req.user?.id || req.user?.userId || req.user?.sub;
 
     if (!userId) {
@@ -29,8 +29,8 @@ router.post('/', authenticateToken, async (req, res) => {
           committee_id,
           cycle_id: cycle_id || null,
           user_id_hash: anonymous_hash,
-          ratings: { score: rating }, // Stores rating as jsonb
-          comment
+          ratings: ratings || { score: rating },
+          comment: review_text || comment
         }
       ])
       .select();
