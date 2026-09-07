@@ -4,7 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-const toPost = (post) => ({
+const toPost = (post, comments = []) => ({
   id: post.id,
   committee: post.committee_name,
   tagline: post.badge || 'Campus Update',
@@ -17,8 +17,19 @@ const toPost = (post) => ({
   posterUrl: post.poster_url,
   likes: post.likes || 0,
   isLiked: false,
-  comments: []
+  comments
 });
+
+const getComments = async (postIds) => {
+  if (!postIds.length) return [];
+  const { data, error } = await supabase
+    .from('feed_comments')
+    .select('id, post_id, comment, created_at')
+    .in('post_id', postIds)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
+};
 
 router.get('/posts', async (req, res) => {
   try {
@@ -33,7 +44,19 @@ router.get('/posts', async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (error) return res.status(400).json({ success: false, error: error.message });
-    res.json({ success: true, page, limit, total_records: count, data: data.map(toPost) });
+    const comments = await getComments(data.map((post) => post.id));
+    res.json({
+      success: true,
+      page,
+      limit,
+      total_records: count,
+      data: data.map((post) => toPost(post, comments.filter((item) => item.post_id === post.id).map((item) => ({
+        id: item.id,
+        user: 'Campus user',
+        text: item.comment,
+        time: item.created_at
+      }))))
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -50,6 +73,24 @@ router.post('/', authenticateToken, async (req, res) => {
 
     if (error) return res.status(400).json({ success: false, error: error.message });
     res.status(201).json({ success: true, data: toPost(data) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/posts/:id/comments', authenticateToken, async (req, res) => {
+  try {
+    const comment = String(req.body.comment || '').trim();
+    if (!comment) return res.status(400).json({ success: false, error: 'Comment is required' });
+
+    const { data, error } = await supabase
+      .from('feed_comments')
+      .insert([{ post_id: req.params.id, author_id: req.user.id, comment }])
+      .select('id, post_id, comment, created_at')
+      .single();
+    if (error) return res.status(400).json({ success: false, error: error.message });
+
+    res.status(201).json({ success: true, data: { id: data.id, user: 'Campus user', text: data.comment, time: data.created_at } });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

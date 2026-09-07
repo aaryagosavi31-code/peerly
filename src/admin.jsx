@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShieldCheck, 
@@ -28,7 +28,8 @@ const EXISTING_COMMITTEES = [
 
 export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostToFeed, isDarkMode, setIsDarkMode }) {
   const [authMode, setAuthMode] = useState('select');
-  const [selectedCommittee, setSelectedCommittee] = useState(EXISTING_COMMITTEES[0].name);
+  const [committeeOptions, setCommitteeOptions] = useState(EXISTING_COMMITTEES);
+  const [selectedCommittee, setSelectedCommittee] = useState(EXISTING_COMMITTEES[0].id);
   const [activeAdminTab, setActiveAdminTab] = useState('publish');
 
   const [regForm, setRegForm] = useState({
@@ -46,34 +47,83 @@ export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostT
     mediaUrl: '',
     badge: 'Announcement'
   });
+  const [eventForm, setEventForm] = useState({
+    title: '',
+    category: 'Workshop',
+    start_time: '',
+    end_time: '',
+    location: '',
+    description: '',
+    reg_link: ''
+  });
 
   const [publishSuccess, setPublishSuccess] = useState(false);
 
-  const handleRegister = (e) => {
+  useEffect(() => {
+    const loadCommittees = async () => {
+      try {
+        const response = await axiosInstance.get('/committees');
+        const loadedCommittees = response.data.data || [];
+        if (loadedCommittees.length) {
+          setCommitteeOptions(loadedCommittees);
+          setSelectedCommittee(loadedCommittees[0].id);
+        }
+      } catch (error) {
+        window.alert(getApiError(error, 'Unable to load committees.'));
+      }
+    };
+    loadCommittees();
+  }, []);
+
+  const handleRegister = async (e) => {
     e.preventDefault();
     if (!regForm.name || !regForm.facultyLead) return;
+    try {
+      const response = await axiosInstance.post('/committees', {
+        name: regForm.name,
+        description: regForm.desc,
+        category: regForm.category,
+        contact_email: regForm.facultyLead,
+        logo_url: null,
+        is_recruiting: true
+      });
+      const committee = response.data.data;
+      if (onAddNewCommittee) onAddNewCommittee({
+        ...committee,
+        rank: 'Unranked (New)',
+        desc: committee.description || 'Newly onboarded campus committee.',
+        fullDetails: `${committee.name} is supervised by ${regForm.facultyLead}. ${committee.description || ''}`,
+        rating: 0,
+        reviewsCount: 0,
+        members: 1,
+        isRecruiting: true,
+        image: committee.logo_url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=600',
+        website: regForm.website || '#',
+        lead: regForm.leadStudent || 'Committee Executive',
+        departments: ['General']
+      });
+      setCommitteeOptions((current) => [...current, committee]);
+      setSelectedCommittee(committee.id);
+      setAuthMode('logged_in');
+    } catch (error) {
+      window.alert(getApiError(error, 'Unable to register the committee. Check your admin permissions.'));
+    }
+  };
 
-    const newCommObj = {
-      id: `comm-${Date.now()}`,
-      rank: 'Unranked (New)',
-      name: regForm.name,
-      category: regForm.category,
-      desc: regForm.desc || 'Newly onboarded campus committee.',
-      fullDetails: `${regForm.name} is supervised by ${regForm.facultyLead}. ${regForm.desc}`,
-      rating: 5.0,
-      reviewsCount: 0,
-      members: 1,
-      isRecruiting: true,
-      image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=600',
-      website: regForm.website || 'https://example.com',
-      lead: regForm.leadStudent || 'Committee Executive',
-      facultyLead: regForm.facultyLead,
-      departments: ['General']
-    };
-
-    if (onAddNewCommittee) onAddNewCommittee(newCommObj);
-    setSelectedCommittee(regForm.name);
-    setAuthMode('logged_in');
+  const handleCreateEvent = async (e) => {
+    e.preventDefault();
+    if (!eventForm.title || !eventForm.start_time || !eventForm.end_time || !eventForm.location) return;
+    try {
+      await axiosInstance.post('/events', {
+        ...eventForm,
+        committee_id: selectedCommittee,
+        is_recruiting: false
+      });
+      window.alert('Event created successfully.');
+      setEventForm({ title: '', category: 'Workshop', start_time: '', end_time: '', location: '', description: '', reg_link: '' });
+    } catch (error) {
+      window.alert(getApiError(error, 'Unable to create the event. Check your committee permissions.'));
+    }
   };
 
   const handlePublish = async (e) => {
@@ -81,7 +131,7 @@ export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostT
     if (!postForm.caption || !postForm.mediaUrl) return;
     try {
       const response = await axiosInstance.post('/feed', {
-        committee_name: selectedCommittee,
+        committee_name: committeeOptions.find((committee) => committee.id === selectedCommittee)?.name || selectedCommittee,
         media_type: postForm.mediaType,
         media_url: postForm.mediaUrl,
         poster_url: postForm.mediaType === 'video' ? postForm.mediaUrl : null,
@@ -122,8 +172,8 @@ export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostT
 
             {authMode === 'logged_in' && (
               <div className="flex items-center gap-2">
-                <span className="text-xs bg-[#E1F3E6] text-[#2D6A4F] dark:bg-[#1C3A27] dark:text-[#81C784] px-3 py-1 rounded-full font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Active: {selectedCommittee}
+                  <span className="text-xs bg-[#E1F3E6] text-[#2D6A4F] dark:bg-[#1C3A27] dark:text-[#81C784] px-3 py-1 rounded-full font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Active: {committeeOptions.find((committee) => committee.id === selectedCommittee)?.name || selectedCommittee}
                 </span>
                 <button 
                   onClick={() => setAuthMode('select')}
@@ -157,7 +207,7 @@ export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostT
                     onChange={(e) => setSelectedCommittee(e.target.value)}
                     className={`w-full p-3 border rounded-xl text-xs font-medium focus:outline-none ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3] text-[#2D2825]'}`}
                   >
-                    {EXISTING_COMMITTEES.map(c => (
+                    {committeeOptions.map(c => (
                       <option key={c.id} value={c.name}>{c.name} (Faculty: {c.faculty})</option>
                     ))}
                   </select>
@@ -302,6 +352,7 @@ export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostT
             </div>
 
             {activeAdminTab === 'publish' && (
+              <div className="space-y-6">
               <div className={`rounded-2xl p-6 border shadow-sm max-w-2xl ${isDarkMode ? 'bg-[#1E1E1E] border-[#2C2C2C]' : 'bg-white border-[#EAE1D3]'}`}>
                 <h3 className={`font-serif text-xl font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-[#1A1615]'}`}>Post Content to Live Feed</h3>
 
@@ -389,6 +440,25 @@ export default function AdminPortal({ onBackToApp, onAddNewCommittee, onAddPostT
                     Publish Content Immediately
                   </button>
                 </form>
+              </div>
+
+              <form onSubmit={handleCreateEvent} className={`rounded-2xl p-6 border shadow-sm max-w-2xl space-y-4 text-xs ${isDarkMode ? 'bg-[#1E1E1E] border-[#2C2C2C]' : 'bg-white border-[#EAE1D3]'}`}>
+                <h3 className={`font-serif text-xl font-bold ${isDarkMode ? 'text-white' : 'text-[#1A1615]'}`}>Create Campus Event</h3>
+                <input type="text" placeholder="Event title" value={eventForm.title} onChange={e => setEventForm({ ...eventForm, title: e.target.value })} className={`w-full p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`} required />
+                <div className="grid grid-cols-2 gap-3">
+                  <select value={eventForm.category} onChange={e => setEventForm({ ...eventForm, category: e.target.value })} className={`p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`}>
+                    <option>Workshop</option><option>Cultural</option><option>Social</option><option>Tech</option>
+                  </select>
+                  <input type="text" placeholder="Location" value={eventForm.location} onChange={e => setEventForm({ ...eventForm, location: e.target.value })} className={`p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`} required />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="datetime-local" value={eventForm.start_time} onChange={e => setEventForm({ ...eventForm, start_time: e.target.value })} className={`p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`} required />
+                  <input type="datetime-local" value={eventForm.end_time} onChange={e => setEventForm({ ...eventForm, end_time: e.target.value })} className={`p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`} required />
+                </div>
+                <textarea placeholder="Description" value={eventForm.description} onChange={e => setEventForm({ ...eventForm, description: e.target.value })} className={`w-full p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`} rows={2} />
+                <input type="url" placeholder="Registration link (optional)" value={eventForm.reg_link} onChange={e => setEventForm({ ...eventForm, reg_link: e.target.value })} className={`w-full p-2.5 border rounded-xl ${isDarkMode ? 'bg-[#2A2A2A] border-[#333] text-white' : 'bg-[#FBF9F4] border-[#EAE1D3]'}`} />
+                <button type="submit" className="w-full py-3 rounded-xl font-bold bg-[#C87D55] text-white hover:bg-[#B36B45]">Create Event</button>
+              </form>
               </div>
             )}
 

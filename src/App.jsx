@@ -177,6 +177,45 @@ export default function App() {
   const [reviewInput, setReviewInput] = useState({ committee: 'cs', score: '5', comment: '' });
 
   useEffect(() => {
+    const loadCommittees = async () => {
+      try {
+        const response = await axiosInstance.get('/committees');
+        const loadedCommittees = response.data.data || [];
+        if (loadedCommittees.length) {
+          setCommittees((current) => loadedCommittees.map((committee, index) => ({
+            ...committee,
+            id: committee.id,
+            rank: index + 1,
+            desc: committee.description || 'Campus committee.',
+            fullDetails: committee.description || 'Campus committee.',
+            rating: committee.rating || 0,
+            reviewsCount: committee.reviews_count || 0,
+            members: committee.members || 0,
+            isRecruiting: committee.is_recruiting,
+            image: committee.logo_url || current[index]?.image || INITIAL_COMMITTEES[0].image,
+            website: committee.website || '#',
+            lead: committee.lead || 'Committee Executive',
+            departments: committee.departments || ['General']
+          })));
+          setReviewInput((current) => ({ ...current, committee: loadedCommittees[0].id }));
+          try {
+            const reviewResponse = await axiosInstance.get(`/reviews/committee/${loadedCommittees[0].id}`);
+            setAnonymousReviews((reviewResponse.data.data || []).map((review) => ({
+              id: review.id,
+              committee: loadedCommittees[0].name,
+              comment: review.comment,
+              score: review.ratings?.score || 0,
+              time: review.created_at
+            })));
+          } catch (reviewError) {
+            console.warn('Saved reviews unavailable:', getApiError(reviewError, 'Unable to load saved reviews.'));
+          }
+        }
+      } catch (error) {
+        window.alert(getApiError(error, 'Unable to load committees for reviews.'));
+      }
+    };
+
     const loadLostFound = async () => {
       try {
         const response = await axiosInstance.get('/lost-found?type=LOST&page=1&limit=10');
@@ -201,10 +240,11 @@ export default function App() {
         const response = await axiosInstance.get('/feed/posts?page=1&limit=6');
         if (Array.isArray(response.data.data)) setPosts(response.data.data);
       } catch (error) {
-        window.alert(getApiError(error, 'Unable to load the campus feed.'));
+        console.warn('Campus feed unavailable:', getApiError(error, 'Unable to load the campus feed.'));
       }
     };
 
+    loadCommittees();
     loadLostFound();
     loadFeed();
   }, []);
@@ -214,11 +254,18 @@ export default function App() {
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
   };
 
-  const handleAddComment = (postId) => {
+  const handleAddComment = async (postId) => {
     const text = commentInputs[postId]?.trim();
     if (!text) return;
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, comments: [...p.comments, { id: Date.now(), user: user.name || 'Anonymous Student', text, time: 'Just now' }] } : p));
-    setCommentInputs(prev => ({ ...prev, [postId]: '' }));
+    try {
+      const response = await axiosInstance.post(`/feed/posts/${postId}/comments`, { comment: text });
+      setPosts((current) => current.map((post) => post.id === postId
+        ? { ...post, comments: [...post.comments, response.data.data] }
+        : post));
+      setCommentInputs((current) => ({ ...current, [postId]: '' }));
+    } catch (error) {
+      window.alert(getApiError(error, 'Unable to save your comment. Please sign in and try again.'));
+    }
   };
 
   const handleAddLostFound = async (e) => {
@@ -256,6 +303,10 @@ export default function App() {
     if (!reviewInput.comment) return;
     try {
       const selectedCommittee = committees.find((committee) => committee.id === reviewInput.committee);
+      if (!selectedCommittee || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(reviewInput.committee)) {
+        window.alert('Please wait for the real committee list to load, then try again.');
+        return;
+      }
       const response = await axiosInstance.post('/reviews', {
         committee_id: reviewInput.committee,
         ratings: { score: Number(reviewInput.score) },
