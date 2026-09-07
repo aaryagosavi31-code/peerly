@@ -198,18 +198,6 @@ export default function App() {
             departments: committee.departments || ['General']
           })));
           setReviewInput((current) => ({ ...current, committee: loadedCommittees[0].id }));
-          try {
-            const reviewResponse = await axiosInstance.get(`/reviews/committee/${loadedCommittees[0].id}`);
-            setAnonymousReviews((reviewResponse.data.data || []).map((review) => ({
-              id: review.id,
-              committee: loadedCommittees[0].name,
-              comment: review.comment,
-              score: review.ratings?.score || 0,
-              time: review.created_at
-            })));
-          } catch (reviewError) {
-            console.warn('Saved reviews unavailable:', getApiError(reviewError, 'Unable to load saved reviews.'));
-          }
         }
       } catch (error) {
         window.alert(getApiError(error, 'Unable to load committees for reviews.'));
@@ -248,6 +236,27 @@ export default function App() {
     loadLostFound();
     loadFeed();
   }, []);
+
+  useEffect(() => {
+    const loadSelectedCommitteeReviews = async () => {
+      if (!reviewInput.committee || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(reviewInput.committee)) return;
+      try {
+        const response = await axiosInstance.get(`/reviews/committee/${reviewInput.committee}`);
+        const committee = committees.find((item) => item.id === reviewInput.committee);
+        setAnonymousReviews((response.data.data || []).map((review) => ({
+          id: review.id,
+          committee: committee?.name || 'Committee',
+          comment: review.comment,
+          score: review.ratings?.score || 0,
+          time: review.created_at
+        })));
+      } catch (error) {
+        console.warn('Saved reviews unavailable:', getApiError(error, 'Unable to load saved reviews.'));
+      }
+    };
+
+    loadSelectedCommitteeReviews();
+  }, [reviewInput.committee, committees]);
 
   // Post Actions
   const toggleLike = (postId) => {
@@ -926,6 +935,11 @@ export default function App() {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               <div className="lg:col-span-7 space-y-4">
+                {anonymousReviews.length === 0 && (
+                  <div className={`p-5 rounded-2xl border text-sm ${isDarkMode ? 'bg-[#1E1E1E] border-[#2C2C2C] text-gray-400' : 'bg-white border-[#EAE1D3] text-[#8C827A]'}`}>
+                    No reviews have been posted for this committee yet.
+                  </div>
+                )}
                 {anonymousReviews.map((rev) => (
                   <div key={rev.id} className={`p-5 rounded-2xl border shadow-sm space-y-2 ${isDarkMode ? 'bg-[#1E1E1E] border-[#2C2C2C]' : 'bg-white border-[#EAE1D3]'}`}>
                     <div className="flex justify-between items-center">
