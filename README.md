@@ -1,4 +1,13 @@
-vercel link :-peerly-hazel.vercel.app
+## Campus Hub
+
+```text
+frontend/   Vite and React application
+backend/    Express API and Vercel configuration
+supabase/   Database SQL policies and migrations
+```
+
+Run the frontend with `npm run dev` or the API with `npm run dev:backend`.
+Deploy the frontend from the repository root and the API with `backend/` as the Vercel project root.
 
 # React + Vite
 

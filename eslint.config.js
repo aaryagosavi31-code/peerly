@@ -20,11 +20,7 @@ export default defineConfig([
   },
   {
     files: [
-      'src/server.js',
-      'src/routes/**/*.js',
-      'src/middleware/**/*.js',
-      'src/lib/**/*.js',
-      'campus-backend/src/**/*.js',
+      'backend/src/**/*.js',
     ],
     languageOptions: {
       globals: globals.node,
