@@ -31,8 +31,7 @@ import {
 } from 'lucide-react';
 import AdminPortal from './admin';
 import axiosInstance from './api/axiosInstance';
-
-const getApiError = (error, fallback) => error.response?.data?.error || fallback;
+import { getApiError } from './api/getApiError';
 
 const INITIAL_POSTS = [
   {

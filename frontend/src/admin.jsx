@@ -17,8 +17,7 @@ import {
   Sun
 } from 'lucide-react';
 import axiosInstance from './api/axiosInstance';
-
-const getApiError = (error, fallback) => error.response?.data?.error || fallback;
+import { getApiError } from './api/getApiError';
 
 const EXISTING_COMMITTEES = [
   { id: 'cs', name: 'Circuit Society', faculty: 'Dr. A. K. Sharma' },
